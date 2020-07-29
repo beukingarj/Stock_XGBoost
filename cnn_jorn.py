@@ -12,6 +12,7 @@ import numpy as np
 from scipy.signal import find_peaks
 from sklearn.preprocessing import OneHotEncoder
 
+Test1
 
 df = pd.read_csv("C:/Users/jbeuk/Documents/Jorn/stock_cnn_blog_pub-master/stock_cnn_blog_pub-master/stock_history/WMT/WMT.csv")
 
