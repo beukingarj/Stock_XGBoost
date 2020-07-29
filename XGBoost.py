@@ -9,6 +9,7 @@ Created on Sat Jul 18 08:01:30 2020
 
 import pandas as pd
 import numpy as np
+import os
 from ta import add_all_ta_features
 import xgboost as xgb
 from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
@@ -24,36 +25,42 @@ from sklearn.calibration import CalibratedClassifierCV, calibration_curve
 
 #%% Extract data
 
-def dataXY(df,train_size=0.7,cv_size=0,pred_future=30):
+def dataXY(df,train_size=0.7,pred_future=10):
     def create_labels(y_cohort, pred_future):
         y = (y_cohort.diff(periods=pred_future).shift(-pred_future).dropna()>=0).astype(int)
         return y
 
     def create_ta(x_cohort,pred_future):
-        x = add_all_ta_features(x_cohort,'open','high','low','close','volume',fillna=True).shift(-pred_future).dropna()
+        x = add_all_ta_features(x_cohort,'Open','High','Low','Close','Volume',fillna=True).shift(-pred_future).dropna()
         return x
 
     train_cohort = df[0:round(df.shape[0]*train_size)]
     x_train_cohort = train_cohort.iloc[:,1:7]
     x_train = create_ta(x_train_cohort, pred_future)
-    y_train_cohort = train_cohort['close']
+    y_train_cohort = train_cohort['Close']
     y_train = create_labels(y_train_cohort, pred_future)
 
-    test_cohort = df[round(df.shape[0]*(train_size+cv_size)):]
+    test_cohort = df[round(df.shape[0]*(train_size)):]
     x_test_cohort = test_cohort.iloc[:,1:7]
     x_test = create_ta(x_test_cohort, pred_future)
-    y_test_cohort = test_cohort['close']
+    y_test_cohort = test_cohort['Close']
     y_test = create_labels(y_test_cohort, pred_future)
     y_test_cohort = y_test_cohort.shift(-pred_future).dropna()
 
     return x_train, y_train, x_test, y_test, y_test_cohort
 
-df = pd.read_csv("C:/Users/jbeuk/Documents/Jorn/stock_cnn_blog_pub-master/stock_cnn_blog_pub-master/stock_history/WMT/WMT.csv")
-# df = pd.read_csv("C:/Users/beukingarj/Downloads/stock_cnn_blog_pub-master/stock_cnn_blog_pub-master/stock_history/WMT/WMT.csv")
-df['timestamp'] = pd.to_datetime(df['timestamp'])
-df.sort_values('timestamp', inplace=True)
-df.reset_index(inplace=True,drop=True)
-x_train, y_train, x_test, y_test, y_test_cohort = dataXY(df,pred_future=10)
+df = pd.DataFrame()
+data_path = "C:/Users/jbeuk/Documents/Jorn/Stock_XGBoost/Data/Stocks"
+for file in os.listdir(data_path)[0:3]:
+    try:
+        df = df.append(pd.read_csv(os.path.join(data_path,file)))
+    except:
+        None
+
+df['Date'] = pd.to_datetime(df['Date'])
+# df.sort_values('Date', inplace=True)
+# df.reset_index(inplace=True,drop=True)
+x_train, y_train, x_test, y_test, y_test_cohort = dataXY(df)
 
 
 #%% Train classifier
@@ -128,7 +135,9 @@ display = RocCurveDisplay(fpr=fpr, tpr=tpr, roc_auc=roc_auc, estimator_name=None
 display.plot()
 plt.title("ROC")
 
-range_class = np.arange(0.1,0.9,0.01)
+range_class = np.linspace(np.min(y_pred_proba),np.max(y_pred_proba),100)
+range_class = np.delete(range_class,0)
+range_class = np.delete(range_class,-1)
 PPV = np.zeros(len(range_class))
 NPV = np.zeros(len(range_class))
 j=0
@@ -161,6 +170,7 @@ print(confusion_matrix(y_test.iloc[idx_sure],y_pred[idx_sure]))
 
 #%% Trading robot
 
+plt.close('all')
 def bot(threshold_high,threshold_low):
     koers=df.iloc[round(df.shape[0]*(0.7)):,4]
 
@@ -171,7 +181,7 @@ def bot(threshold_high,threshold_low):
     buyat=0
     for i in range(len(x_test)):
         if y_pred_proba[i]>threshold_high and bought==0:
-#            print("Buy at i=",i)
+            # print("Buy at i=",i)
             buyat = koers.iloc[i]
 
             if sellat!=0:
@@ -182,7 +192,7 @@ def bot(threshold_high,threshold_low):
 
             bought=1
         elif y_pred_proba[i]<threshold_low and bought==1:
-#            print("Sell at i=",i)
+            # print("Sell at i=",i)
             sellat = koers.iloc[i]
 
             if buyat!=0:
@@ -197,23 +207,23 @@ def bot(threshold_high,threshold_low):
     return start
 
 
-#range_class = np.arange(0.1,1,0.01)
-#interest = np.zeros((range_class.shape[0],range_class.shape[0]))
-#ii=0
-#for i in range_class:
-#    jj=0
-#    for j in range_class:
-#        start = bot(i,j)
-#        interest[ii,jj] = start[-1]/start[0]*100/len(start)
-#        jj+=1
-#    ii+=1
-#ind = np.unravel_index(np.argmax(interest), interest.shape)
+# range_class = np.linspace(min(y_pred_proba),max(y_pred_proba),100)
+# interest = np.zeros((range_class.shape[0],range_class.shape[0]))
+# ii=0
+# for i in range_class:
+#     jj=0
+#     for j in range_class:
+#         start = bot(i,j)
+#         interest[ii,jj] = start[-1]/start[0]*100/len(start)
+#         jj+=1
+#     ii+=1
+# ind = np.unravel_index(np.argmax(interest), interest.shape)
 
-start = bot(0.38,0.13)
+start = bot(0.6,0.46)
 interest = start[-1]/start[0]*100/len(start)
 print("interest: ",interest)
 plt.figure()
-plt.plot(start[0:])
+plt.plot(start[:5*250])
 
 
 
